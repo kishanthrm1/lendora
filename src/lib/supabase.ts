@@ -68,3 +68,88 @@ export type Review = {
   created_at: string;
   reviewer?: Profile | null;
 };
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  booking_id: string | null;
+  read: boolean;
+  created_at: string;
+};
+
+export type Conversation = {
+  id: string;
+  item_id: string;
+  participant_a: string;
+  participant_b: string;
+  created_at: string;
+  item?: Item | null;
+  participant_a_profile?: Profile | null;
+  participant_b_profile?: Profile | null;
+};
+
+export type Message = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+};
+
+export type Report = {
+  id: string;
+  reporter_id: string;
+  report_type: string;
+  target_id: string;
+  reason: string;
+  details: string | null;
+  created_at: string;
+};
+
+export type ItemRating = {
+  item_id: string;
+  avg_rating: number;
+  review_count: number;
+};
+
+export async function createNotification(
+  userId: string,
+  type: string,
+  title: string,
+  message: string,
+  bookingId?: string,
+) {
+  await supabase.from('notifications').insert({
+    user_id: userId,
+    type,
+    title,
+    message,
+    booking_id: bookingId ?? null,
+  });
+}
+
+export async function getItemRating(itemId: string): Promise<ItemRating | null> {
+  const { data } = await supabase
+    .from('item_ratings')
+    .select('*')
+    .eq('item_id', itemId)
+    .maybeSingle();
+  return data as ItemRating | null;
+}
+
+export async function getItemsRatings(itemIds: string[]): Promise<Record<string, ItemRating>> {
+  if (itemIds.length === 0) return {};
+  const { data } = await supabase
+    .from('item_ratings')
+    .select('*')
+    .in('item_id', itemIds);
+  const map: Record<string, ItemRating> = {};
+  (data as ItemRating[] | null)?.forEach((r) => {
+    map[r.item_id] = r;
+  });
+  return map;
+}

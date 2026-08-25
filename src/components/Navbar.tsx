@@ -1,13 +1,16 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Search, LayoutGrid, Plus, LayoutDashboard, LogOut, User, Menu, X, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { Search, LayoutGrid, Plus, LayoutDashboard, LogOut, User, Menu, X, RefreshCw, Bell, MessageSquare } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 export default function Navbar() {
   const { user, profile, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   const navItems = [
     { to: '/', label: 'Browse', icon: Search },
@@ -24,6 +27,55 @@ export default function Navbar() {
     await signOut();
     navigate('/');
   };
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      setUnreadMessages(0);
+      return;
+    }
+
+    // Load unread notifications
+    const loadUnread = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user!.id)
+        .eq('read', false);
+      setUnreadCount(count || 0);
+    };
+
+    // Load unread messages
+    const loadUnreadMessages = async () => {
+      const { data: convs } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`participant_a.eq.${user!.id},participant_b.eq.${user!.id}`);
+      if (!convs || convs.length === 0) {
+        setUnreadMessages(0);
+        return;
+      }
+      const convIds = convs.map((c) => c.id);
+      const { count: msgCount } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .in('conversation_id', convIds)
+        .neq('sender_id', user!.id)
+        .eq('read', false);
+      setUnreadMessages(msgCount || 0);
+    };
+
+    loadUnread();
+    loadUnreadMessages();
+
+    // Poll for new notifications/messages every 15 seconds
+    const interval = setInterval(() => {
+      loadUnread();
+      loadUnreadMessages();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [user, location.pathname]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-lg">
@@ -59,9 +111,37 @@ export default function Navbar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {user ? (
             <>
+              {/* Messages */}
+              <Link
+                to="/messages"
+                className="relative hidden rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 md:block"
+                title="Messages"
+              >
+                <MessageSquare className="h-5 w-5" />
+                {unreadMessages > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-teal-600 px-1 text-[10px] font-bold text-white">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                )}
+              </Link>
+
+              {/* Notifications */}
+              <Link
+                to="/notifications"
+                className="relative hidden rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 md:block"
+                title="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Link>
+
               <Link to="/list-item" className="hidden btn-primary sm:inline-flex">
                 <Plus className="h-4 w-4" />
                 List an Item
@@ -125,6 +205,32 @@ export default function Navbar() {
             })}
             {user && (
               <>
+                <Link
+                  to="/notifications"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  <Bell className="h-4 w-4" />
+                  Notifications
+                  {unreadCount > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-bold text-white">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
+                  to="/messages"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Messages
+                  {unreadMessages > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 text-xs font-bold text-white">
+                      {unreadMessages}
+                    </span>
+                  )}
+                </Link>
                 <Link
                   to="/list-item"
                   onClick={() => setMobileOpen(false)}

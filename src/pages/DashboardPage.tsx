@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Package, Calendar, Plus, Clock, CheckCircle2, XCircle, ArrowRight,
-  ArrowLeft, Trash2, ShoppingBag, RefreshCw, Star,
+  Package, Calendar, Plus, Clock, CheckCircle2, XCircle,
+  ArrowLeft, Trash2, ShoppingBag, RefreshCw, Star, MessageSquare,
+  X,
 } from 'lucide-react';
-import { supabase, type Item, type Booking } from '@/lib/supabase';
+import { supabase, type Item, type Booking, createNotification } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -13,6 +14,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.C
   active: { label: 'Active', color: 'bg-teal-100 text-teal-700', icon: RefreshCw },
   returned: { label: 'Returned', color: 'bg-gray-100 text-gray-700', icon: CheckCircle2 },
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700', icon: XCircle },
+  rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700', icon: XCircle },
   purchased: { label: 'Purchased', color: 'bg-green-100 text-green-700', icon: ShoppingBag },
 };
 
@@ -24,6 +26,13 @@ export default function DashboardPage() {
   const [borrowBookings, setBorrowBookings] = useState<Booking[]>([]);
   const [lendBookings, setLendBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Review modal
+  const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewDone, setReviewDone] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -49,12 +58,26 @@ export default function DashboardPage() {
   const updateBookingStatus = async (bookingId: string, status: string) => {
     const { error } = await supabase.from('bookings').update({ status }).eq('id', bookingId);
     if (!error) {
-      setLendBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status } : b))
-      );
-      setBorrowBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status } : b))
-      );
+      setLendBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status } : b)));
+      setBorrowBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status } : b)));
+
+      // Send notification based on status
+      const booking = [...borrowBookings, ...lendBookings].find((b) => b.id === bookingId);
+      if (booking) {
+        if (status === 'approved') {
+          await createNotification(booking.borrower_id, 'booking_approved', 'Booking approved', `Your booking for "${booking.item?.title}" has been approved.`, bookingId);
+        } else if (status === 'rejected') {
+          await createNotification(booking.borrower_id, 'booking_rejected', 'Booking rejected', `Your booking request for "${booking.item?.title}" was declined by the owner.`, bookingId);
+        } else if (status === 'cancelled') {
+          const notifyId = user?.id === booking.borrower_id ? booking.owner_id : booking.borrower_id;
+          const actor = user?.id === booking.borrower_id ? 'borrower' : 'owner';
+          await createNotification(notifyId, 'booking_cancelled', 'Booking cancelled', `The ${actor} cancelled the booking for "${booking.item?.title}".`, bookingId);
+        } else if (status === 'active') {
+          await createNotification(booking.borrower_id, 'booking_approved', 'Booking is now active', `Your booking for "${booking.item?.title}" is now active. Enjoy!`, bookingId);
+        } else if (status === 'returned') {
+          await createNotification(booking.borrower_id, 'booking_approved', 'Item returned', `Your booking for "${booking.item?.title}" has been marked as returned. Please leave a review!`, bookingId);
+        }
+      }
     }
   };
 
@@ -64,6 +87,58 @@ export default function DashboardPage() {
     if (!error) {
       setMyItems((prev) => prev.filter((i) => i.id !== itemId));
     }
+  };
+
+  const startConversation = async (itemId: string, otherUserId: string) => {
+    if (!user) return;
+    const participantA = user.id < otherUserId ? user.id : otherUserId;
+    const participantB = user.id < otherUserId ? otherUserId : user.id;
+
+    const { data: existing } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('item_id', itemId)
+      .eq('participant_a', participantA)
+      .eq('participant_b', participantB)
+      .maybeSingle();
+
+    if (existing) {
+      navigate(`/chat/${(existing as { id: string }).id}`);
+    } else {
+      const { data: newConv } = await supabase
+        .from('conversations')
+        .insert({ item_id: itemId, participant_a: participantA, participant_b: participantB })
+        .select('*')
+        .single();
+      if (newConv) {
+        navigate(`/chat/${(newConv as { id: string }).id}`);
+      }
+    }
+  };
+
+  const submitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !reviewBooking) return;
+    setReviewSubmitting(true);
+
+    const { error } = await supabase.from('reviews').insert({
+      booking_id: reviewBooking.id,
+      reviewer_id: user.id,
+      rating: reviewRating,
+      comment: reviewComment || null,
+    });
+
+    if (!error) {
+      setReviewDone(true);
+      setReviewComment('');
+      setReviewRating(5);
+    }
+    setReviewSubmitting(false);
+  };
+
+  const hasReviewed = (bookingId: string) => {
+    // We can't easily check without loading reviews, so we'll track submitted reviews
+    return false;
   };
 
   if (authLoading || loading) {
@@ -214,7 +289,10 @@ export default function DashboardPage() {
                     key={booking.id}
                     booking={booking}
                     role="borrower"
+                    currentUserId={user?.id || ''}
                     onUpdateStatus={updateBookingStatus}
+                    onMessage={startConversation}
+                    onReview={(b) => { setReviewBooking(b); setReviewDone(false); }}
                   />
                 ))}
               </div>
@@ -238,7 +316,10 @@ export default function DashboardPage() {
                     key={booking.id}
                     booking={booking}
                     role="owner"
+                    currentUserId={user?.id || ''}
                     onUpdateStatus={updateBookingStatus}
+                    onMessage={startConversation}
+                    onReview={() => {}}
                   />
                 ))}
               </div>
@@ -246,6 +327,70 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Review Modal */}
+      {reviewBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-fade-in" onClick={() => setReviewBooking(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            {reviewDone ? (
+              <div className="text-center">
+                <CheckCircle2 className="mx-auto h-12 w-12 text-teal-600" />
+                <h3 className="mt-4 font-display text-lg font-bold text-gray-900">Review Submitted!</h3>
+                <p className="mt-2 text-sm text-gray-500">Thank you for your feedback.</p>
+                <button onClick={() => setReviewBooking(null)} className="btn-primary mt-6">Close</button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-display text-lg font-bold text-gray-900">Leave a Review</h3>
+                  <button onClick={() => setReviewBooking(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  How was your experience with "{reviewBooking.item?.title}"?
+                </p>
+                <form onSubmit={submitReview} className="mt-4 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">Rating</label>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setReviewRating(star)}
+                          className="p-1"
+                        >
+                          <Star
+                            className={`h-7 w-7 ${
+                              star <= reviewRating
+                                ? 'fill-amber-400 text-amber-400'
+                                : 'text-gray-200'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Comment (optional)</label>
+                    <textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      rows={3}
+                      placeholder="Share your experience..."
+                      className="input-field resize-none"
+                    />
+                  </div>
+                  <button type="submit" disabled={reviewSubmitting} className="btn-primary w-full">
+                    {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -276,14 +421,24 @@ function EmptyState({
 function BookingRow({
   booking,
   role,
+  currentUserId,
   onUpdateStatus,
+  onMessage,
+  onReview,
 }: {
   booking: Booking;
   role: 'borrower' | 'owner';
+  currentUserId: string;
   onUpdateStatus: (id: string, status: string) => void;
+  onMessage: (itemId: string, otherUserId: string) => void;
+  onReview: (booking: Booking) => void;
 }) {
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
+  const otherUserId = role === 'borrower' ? booking.owner_id : booking.borrower_id;
+  const canCancel = (role === 'borrower' && booking.status === 'pending') ||
+    (role === 'owner' && (booking.status === 'pending' || booking.status === 'approved'));
+  const canReview = role === 'borrower' && booking.status === 'returned';
 
   return (
     <div className="card p-4">
@@ -325,46 +480,87 @@ function BookingRow({
               )}
             </div>
 
-            {role === 'owner' && booking.status === 'pending' && (
-              <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {/* Message button */}
+              {(booking.status === 'approved' || booking.status === 'active' || booking.status === 'pending') && (
                 <button
-                  onClick={() => onUpdateStatus(booking.id, 'approved')}
-                  className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-700"
+                  onClick={() => onMessage(booking.item_id, otherUserId)}
+                  className="rounded-lg border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-teal-50 hover:text-teal-600"
+                  title="Message"
                 >
-                  Approve
+                  <MessageSquare className="h-3.5 w-3.5" />
                 </button>
+              )}
+
+              {/* Owner actions */}
+              {role === 'owner' && booking.status === 'pending' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onUpdateStatus(booking.id, 'approved')}
+                    className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-700"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => onUpdateStatus(booking.id, 'rejected')}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+              {role === 'owner' && booking.status === 'approved' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onUpdateStatus(booking.id, 'active')}
+                    className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-700"
+                  >
+                    Mark Active
+                  </button>
+                  <button
+                    onClick={() => onUpdateStatus(booking.id, 'cancelled')}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {role === 'owner' && booking.status === 'active' && (
+                <button
+                  onClick={() => onUpdateStatus(booking.id, 'returned')}
+                  className="rounded-lg bg-gray-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-700"
+                >
+                  Mark Returned
+                </button>
+              )}
+
+              {/* Borrower actions */}
+              {role === 'borrower' && booking.status === 'pending' && (
                 <button
                   onClick={() => onUpdateStatus(booking.id, 'cancelled')}
                   className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
                 >
-                  Decline
+                  Cancel
                 </button>
-              </div>
-            )}
-            {role === 'owner' && booking.status === 'approved' && (
-              <button
-                onClick={() => onUpdateStatus(booking.id, 'active')}
-                className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-700"
-              >
-                Mark Active
-              </button>
-            )}
-            {role === 'owner' && booking.status === 'active' && (
-              <button
-                onClick={() => onUpdateStatus(booking.id, 'returned')}
-                className="rounded-lg bg-gray-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-700"
-              >
-                Mark Returned
-              </button>
-            )}
-            {role === 'borrower' && booking.status === 'pending' && (
-              <button
-                onClick={() => onUpdateStatus(booking.id, 'cancelled')}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            )}
+              )}
+              {role === 'borrower' && booking.status === 'approved' && (
+                <button
+                  onClick={() => onUpdateStatus(booking.id, 'cancelled')}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              )}
+              {canReview && (
+                <button
+                  onClick={() => onReview(booking)}
+                  className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-600"
+                >
+                  <Star className="mr-1 inline h-3 w-3" />
+                  Review
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

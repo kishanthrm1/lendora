@@ -9,6 +9,10 @@ import ListItemPage from '@/pages/ListItemPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ProfilePage from '@/pages/ProfilePage';
 import AuthPage from '@/pages/AuthPage';
+import NotificationsPage from '@/pages/NotificationsPage';
+import MessagesPage from '@/pages/MessagesPage';
+import ChatPage from '@/pages/ChatPage';
+import CheckoutPage from '@/pages/CheckoutPage';
 
 function Footer() {
   return (
@@ -56,6 +60,10 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/messages" element={<MessagesPage />} />
+              <Route path="/chat/:conversationId" element={<ChatPage />} />
+              <Route path="/checkout" element={<CheckoutPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

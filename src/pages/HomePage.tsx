@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, MapPin, Star, TrendingUp, Shield, RefreshCw, ArrowRight } from 'lucide-react';
-import { supabase, type Item, type Category } from '@/lib/supabase';
+import { supabase, type Item, type Category, type ItemRating, getItemsRatings } from '@/lib/supabase';
 import ItemCard from '@/components/ItemCard';
 
 export default function HomePage() {
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [ratings, setRatings] = useState<Record<string, ItemRating>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -23,6 +24,10 @@ export default function HomePage() {
       ]);
       setItems(itemsData as Item[]);
       setCategories(catData as Category[]);
+      if (itemsData) {
+        const ids = (itemsData as Item[]).map((i) => i.id);
+        getItemsRatings(ids).then(setRatings);
+      }
       setLoading(false);
     }
     loadData();
@@ -140,7 +145,7 @@ export default function HomePage() {
         ) : (
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((item) => (
-              <ItemCard key={item.id} item={item} />
+              <ItemCard key={item.id} item={item} rating={ratings[item.id]} />
             ))}
           </div>
         )}

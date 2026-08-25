@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { MapPin, Star } from 'lucide-react';
-import type { Item } from '@/lib/supabase';
+import type { Item, ItemRating } from '@/lib/supabase';
 
 const conditionLabels: Record<string, string> = {
   new: 'New',
@@ -16,7 +16,10 @@ const conditionColors: Record<string, string> = {
   fair: 'bg-amber-100 text-amber-700',
 };
 
-export default function ItemCard({ item }: { item: Item }) {
+export default function ItemCard({ item, rating }: { item: Item; rating?: ItemRating }) {
+  const avgRating = rating ? Number(rating.avg_rating) : 0;
+  const reviewCount = rating ? rating.review_count : 0;
+
   return (
     <Link
       to={`/item/${item.id}`}
@@ -77,10 +80,18 @@ export default function ItemCard({ item }: { item: Item }) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-1 text-sm">
-            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-            <span className="font-medium text-gray-600">4.9</span>
-          </div>
+          {reviewCount > 0 ? (
+            <div className="flex items-center gap-1 text-sm">
+              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+              <span className="font-medium text-gray-600">{avgRating.toFixed(1)}</span>
+              <span className="text-xs text-gray-400">({reviewCount})</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-sm">
+              <Star className="h-4 w-4 text-gray-200" />
+              <span className="text-xs text-gray-400">No reviews</span>
+            </div>
+          )}
         </div>
       </div>
     </Link>
