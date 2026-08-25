@@ -561,7 +561,7 @@ export default function ItemDetailPage() {
                   <p className="text-sm font-semibold text-gray-900">
                     {owner?.full_name || 'Owner'}
                   </p>
-                  <p className="text-xs text-gray-400">Listed on BorrowBefore</p>
+                  <p className="text-xs text-gray-400">Listed on Lendora</p>
                 </div>
               </div>
             </div>

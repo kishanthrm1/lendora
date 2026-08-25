@@ -51,7 +51,7 @@ export default function AuthPage() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
             <RefreshCw className="h-5 w-5" />
           </div>
-          <span className="font-display text-xl font-bold">BorrowBefore</span>
+          <span className="font-display text-xl font-bold">Lendora</span>
         </Link>
 
         <div className="relative">
@@ -80,7 +80,7 @@ export default function AuthPage() {
           </div>
         </div>
 
-        <p className="relative text-sm text-teal-200">© 2026 BorrowBefore. All rights reserved.</p>
+        <p className="relative text-sm text-teal-200">© 2026 Lendora. All rights reserved.</p>
       </div>
 
       {/* Right side — form */}

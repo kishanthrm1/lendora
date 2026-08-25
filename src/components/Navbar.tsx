@@ -86,7 +86,7 @@ export default function Navbar() {
               <RefreshCw className="h-5 w-5" />
             </div>
             <span className="font-display text-lg font-bold text-gray-900">
-              Borrow<span className="text-teal-600">Before</span>
+              <span className="text-teal-600">Lendora</span>
             </span>
           </Link>
 

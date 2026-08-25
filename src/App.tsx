@@ -23,10 +23,10 @@ function Footer() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-white">
               <Package className="h-4 w-4" />
             </div>
-            <span className="font-display text-sm font-bold text-gray-900">BorrowBefore</span>
+            <span className="font-display text-sm font-bold text-gray-900">Lendora</span>
           </div>
           <p className="text-xs text-gray-400">
-            © 2026 BorrowBefore. Try before you buy.
+            © 2026 Lendora. Try before you buy.
           </p>
         </div>
       </div>
